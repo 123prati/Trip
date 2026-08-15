@@ -73,12 +73,20 @@
           headers: {'Content-Type':'application/json'},
           body: JSON.stringify({messages: state.messages})
         });
-        const data = await res.json();
+        const data = await res.json().catch(()=>({}));
         messagesEl.removeChild(thinking);
-        appendMessage('assistant', data.reply || 'No response');
+        if (!res.ok) {
+          const err = data?.error || JSON.stringify(data) || `HTTP ${res.status}`;
+          appendMessage('assistant', `Error: ${err}`);
+        } else {
+          // Show reply or helpful diagnostic if empty
+          const reply = data.reply || data.error || '';
+          appendMessage('assistant', reply || 'No response');
+        }
       }catch(e){
         messagesEl.removeChild(thinking);
-        appendMessage('assistant', 'Error contacting server');
+        console.error(e);
+        appendMessage('assistant', 'Error contacting server (network)');
       }
     }
 
