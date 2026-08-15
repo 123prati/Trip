@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Trip Planner Chat</title>
+  <style>
+    body{font-family:Arial,Helvetica,sans-serif;background:#f7f7f8;margin:0;padding:0}
+    .container{max-width:780px;margin:28px auto;padding:18px}
+    .chat{background:#fff;border-radius:8px;padding:16px;box-shadow:0 2px 6px rgba(0,0,0,.08)}
+    .messages{max-height:60vh;overflow:auto;padding:8px}
+    .msg{margin:10px 0;display:flex}
+    .msg.user{justify-content:flex-end}
+    .bubble{padding:10px 14px;border-radius:14px;max-width:72%}
+    .bubble.user{background:#0078d4;color:#fff;border-bottom-right-radius:4px}
+    .bubble.assistant{background:#efefef;color:#111;border-bottom-left-radius:4px}
+    .controls{display:flex;margin-top:12px}
+    textarea{flex:1;padding:10px;border-radius:6px;border:1px solid #ddd;resize:none}
+    button{margin-left:8px;padding:10px 14px;border:none;background:#0078d4;color:#fff;border-radius:6px}
+    .small{font-size:12px;color:#666;margin-top:8px}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Trip Planner Chat</h2>
+    <div class="chat">
+      <div id="messages" class="messages"></div>
+      <div class="controls">
+        <textarea id="input" rows="2" placeholder="Ask about flights, hotels, visas, or itineraries..."></textarea>
+        <button id="send">Send</button>
+      </div>
+      <div class="small">Disclaimer: Verify travel details (visas, COVID rules, bookings). Use official sources.</div>
+    </div>
+  </div>
+
+  <script>
+    const messagesEl = document.getElementById('messages');
+    const inputEl = document.getElementById('input');
+    const sendBtn = document.getElementById('send');
+
+    const state = { messages: [] };
+
+    function appendMessage(role, text){
+      state.messages.push({role, content:text});
+      const div = document.createElement('div');
+      div.className = 'msg ' + (role === 'user' ? 'user' : 'assistant');
+      const bubble = document.createElement('div');
+      bubble.className = 'bubble ' + (role === 'user' ? 'user' : 'assistant');
+      bubble.innerText = text;
+      div.appendChild(bubble);
+      messagesEl.appendChild(div);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    async function send(){
+      const text = inputEl.value.trim();
+      if(!text) return;
+      appendMessage('user', text);
+      inputEl.value = '';
+
+      const thinking = document.createElement('div');
+      thinking.className = 'msg assistant';
+      const bubble = document.createElement('div');
+      bubble.className = 'bubble assistant';
+      bubble.innerText = 'Thinking...';
+      thinking.appendChild(bubble);
+      messagesEl.appendChild(thinking);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+
+      try{
+        const res = await fetch('/chat', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({messages: state.messages})
+        });
+        const data = await res.json();
+        messagesEl.removeChild(thinking);
+        appendMessage('assistant', data.reply || 'No response');
+      }catch(e){
+        messagesEl.removeChild(thinking);
+        appendMessage('assistant', 'Error contacting server');
+      }
+    }
+
+    sendBtn.addEventListener('click', send);
+    inputEl.addEventListener('keydown', (e)=>{ if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); send(); } });
+  </script>
+</body>
+</html>
