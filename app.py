@@ -7,6 +7,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
 import openai
+from openai import OpenAI
+from urllib.parse import urlparse
 
 
 load_dotenv()
@@ -40,11 +42,20 @@ def validate_env():
 
 
 def configure_openai():
-    openai.api_type = "azure"
-    openai.api_base = AZURE_ENDPOINT
-    # Azure requires an API version; default to a common supported version if not set
-    openai.api_version = os.getenv("AZURE_API_VERSION", "2023-05-15")
-    openai.api_key = AZURE_API_KEY
+    # Normalize Azure endpoint: if user supplied a Projects URL (contains '/api/'),
+    # use the root as `api_base` (e.g. https://resource.services.ai.azure.com)
+    api_base = AZURE_ENDPOINT
+    if AZURE_ENDPOINT and "/api/" in AZURE_ENDPOINT:
+        api_base = AZURE_ENDPOINT.split("/api/")[0]
+
+    # Create a modern OpenAI client configured for Azure
+    client = OpenAI(
+        api_key=AZURE_API_KEY,
+        api_base=api_base,
+        api_type="azure",
+        api_version=os.getenv("AZURE_API_VERSION", "2024-06-14-preview"),
+    )
+    return client
 
 
 @app.get("/")
@@ -59,17 +70,18 @@ async def chat(req: ChatRequest):
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-    configure_openai()
+    client = configure_openai()
 
     # Build the messages list, prepending a single system message.
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     for m in req.messages:
         messages.append({"role": m.role, "content": m.content})
 
-    # Call Azure OpenAI via the OpenAI Python SDK using the ChatCompletion API.
+    # Use the modern client to create a chat completion. For Azure, the deployment
+    # name is passed as the `model` parameter.
     try:
-        resp = openai.ChatCompletion.create(
-            engine=AZURE_DEPLOYMENT,
+        resp = client.chat.completions.create(
+            model=AZURE_DEPLOYMENT,
             messages=messages,
             max_tokens=512,
             temperature=0.2,
@@ -83,10 +95,15 @@ async def chat(req: ChatRequest):
         return JSONResponse(status_code=502, content={"error": "AI service error"})
 
     # Extract reply text safely
+    # Response shape for the modern client: `resp.choices[0].message.content`
     try:
-        reply = resp.choices[0].message.get("content", "")
+        reply = resp.choices[0].message.content
     except Exception:
-        reply = ""
+        # Fallback: try older-style access
+        try:
+            reply = resp.choices[0].message.get("content", "")
+        except Exception:
+            reply = ""
 
     return {"reply": reply}
 
