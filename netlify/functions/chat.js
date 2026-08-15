@@ -34,11 +34,20 @@ exports.handler = async function (event) {
     let apiBase = endpoint;
     if (endpoint.includes('/api/')) apiBase = endpoint.split('/api/')[0];
 
-    // Try each API version until one succeeds
+    // Try each API version until one succeeds. For Azure AI Studio projects endpoints
+    // the path can be different; we'll try both common patterns:
+    // 1) /openai/deployments/{deployment}/chat/completions (classic Azure OpenAI)
+    // 2) /api/projects/{project}/chat/completions?deployment={deployment} (AI Studio Projects)
+    // If the provided AZURE_ENDPOINT already contains '/api/projects/', we'll extract the project name.
+    let projectName = null;
+    const match = endpoint && endpoint.match(/\/api\/projects\/([^\/\?]+)/);
+    if (match) projectName = match[1];
+
     for (const apiVersion of tryVersions) {
       try {
-        const url = `${apiBase}/openai/deployments/${deployment}/chat/completions?api-version=${apiVersion}`;
-        const resp = await fetch(url, {
+        // Try classic OpenAI-style path
+        let url1 = `${apiBase}/openai/deployments/${deployment}/chat/completions?api-version=${apiVersion}`;
+        let resp = await fetch(url1, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -47,10 +56,31 @@ exports.handler = async function (event) {
           body: JSON.stringify({ messages: fullMessages, max_tokens: 512, temperature: 0.2 }),
         });
 
-        const data = await resp.json();
+        let data = await resp.json().catch(()=>null);
         if (resp.ok && data) {
           resultData = data;
           break;
+        }
+
+        // If a projectName exists, try the Projects-style path
+        if (projectName) {
+          const url2 = `${apiBase}/api/projects/${encodeURIComponent(projectName)}/chat/completions?deployment=${encodeURIComponent(deployment)}&api-version=${apiVersion}`;
+          resp = await fetch(url2, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'api-key': apiKey,
+            },
+            body: JSON.stringify({ messages: fullMessages, max_tokens: 512, temperature: 0.2 }),
+          });
+
+          data = await resp.json().catch(()=>null);
+          if (resp.ok && data) {
+            resultData = data;
+            break;
+          } else {
+            lastError = { status: resp.status, body: data, apiVersion };
+          }
         } else {
           lastError = { status: resp.status, body: data, apiVersion };
         }
