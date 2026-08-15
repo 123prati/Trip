@@ -21,13 +21,14 @@ exports.handler = async function (event) {
     const tryVersions = [];
     if (configuredVersion) tryVersions.push(configuredVersion);
     // expanded list of API versions to try (newer first)
+    // Put 2023-05-15 early since some AI Studio projects only accept this
+    tryVersions.push('2023-05-15');
     tryVersions.push(
       '2024-12-01-preview',
       '2024-10-31-preview',
       '2024-09-01-preview',
       '2024-06-14-preview',
-      '2023-07-01-preview',
-      '2023-05-15'
+      '2023-07-01-preview'
     );
 
     let lastError = null;
@@ -57,6 +58,24 @@ exports.handler = async function (event) {
         let resp = await fetch(url1, {
           method: 'POST',
           headers: {
+            // Try Projects-style deployments path (some resources expose deployments under /api/projects/{project}/deployments/{deployment})
+            const urlProjectDeployment = `${apiBase}/api/projects/${encodeURIComponent(projectName)}/deployments/${encodeURIComponent(deployment)}/chat/completions?api-version=${apiVersion}`;
+            let respProjDep = await fetch(urlProjectDeployment, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'api-key': apiKey,
+                'api-version': apiVersion,
+              },
+              body: JSON.stringify({ messages: fullMessages, max_tokens: 512, temperature: 0.2 }),
+            }).catch(()=>null);
+
+            let dataProjDep = respProjDep ? await respProjDep.json().catch(()=>null) : null;
+            if (respProjDep && respProjDep.ok && dataProjDep) {
+              resultData = dataProjDep;
+              break;
+            }
+
             'Content-Type': 'application/json',
             'api-key': apiKey,
             'api-version': apiVersion,
