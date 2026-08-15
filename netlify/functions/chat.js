@@ -59,6 +59,7 @@ exports.handler = async function (event) {
           headers: {
             'Content-Type': 'application/json',
             'api-key': apiKey,
+            'api-version': apiVersion,
           },
           body: JSON.stringify({ messages: fullMessages, max_tokens: 512, temperature: 0.2 }),
         });
@@ -78,6 +79,7 @@ exports.handler = async function (event) {
             headers: {
               'Content-Type': 'application/json',
               'api-key': apiKey,
+              'api-version': apiVersion,
             },
             body: JSON.stringify({ messages: fullMessages, max_tokens: 512, temperature: 0.2 }),
           });
@@ -95,6 +97,7 @@ exports.handler = async function (event) {
             headers: {
               'Content-Type': 'application/json',
               'api-key': apiKey,
+              'api-version': apiVersion,
             },
             body: JSON.stringify({ deployment: deployment, messages: fullMessages, max_tokens: 512, temperature: 0.2 }),
           });
