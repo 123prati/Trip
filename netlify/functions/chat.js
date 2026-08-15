@@ -20,8 +20,15 @@ exports.handler = async function (event) {
     const configuredVersion = process.env.AZURE_API_VERSION;
     const tryVersions = [];
     if (configuredVersion) tryVersions.push(configuredVersion);
-    // common API versions to try as fallbacks
-    tryVersions.push('2024-06-14-preview', '2023-07-01-preview', '2023-05-15');
+    // expanded list of API versions to try (newer first)
+    tryVersions.push(
+      '2024-12-01-preview',
+      '2024-10-31-preview',
+      '2024-09-01-preview',
+      '2024-06-14-preview',
+      '2023-07-01-preview',
+      '2023-05-15'
+    );
 
     let lastError = null;
     let resultData = null;
@@ -64,6 +71,7 @@ exports.handler = async function (event) {
 
         // If a projectName exists, try the Projects-style path
         if (projectName) {
+          // Try Projects-style with deployment as query param
           const url2 = `${apiBase}/api/projects/${encodeURIComponent(projectName)}/chat/completions?deployment=${encodeURIComponent(deployment)}&api-version=${apiVersion}`;
           resp = await fetch(url2, {
             method: 'POST',
@@ -78,9 +86,27 @@ exports.handler = async function (event) {
           if (resp.ok && data) {
             resultData = data;
             break;
-          } else {
-            lastError = { status: resp.status, body: data, apiVersion };
           }
+
+          // Try Projects-style passing deployment in the request body (some endpoints expect this)
+          const url3 = `${apiBase}/api/projects/${encodeURIComponent(projectName)}/chat/completions?api-version=${apiVersion}`;
+          resp = await fetch(url3, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'api-key': apiKey,
+            },
+            body: JSON.stringify({ deployment: deployment, messages: fullMessages, max_tokens: 512, temperature: 0.2 }),
+          });
+
+          data = await resp.json().catch(()=>null);
+          if (resp.ok && data) {
+            resultData = data;
+            break;
+          }
+
+          // record last error if none succeeded
+          lastError = { status: resp.status, body: data, apiVersion };
         } else {
           lastError = { status: resp.status, body: data, apiVersion };
         }
